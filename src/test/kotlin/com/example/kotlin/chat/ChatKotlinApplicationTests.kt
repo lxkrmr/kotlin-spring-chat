@@ -5,6 +5,8 @@ import com.example.kotlin.chat.repository.Message
 import com.example.kotlin.chat.repository.MessageRepository
 import com.example.kotlin.chat.service.MessageVM
 import com.example.kotlin.chat.service.UserVM
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -25,7 +27,7 @@ import java.time.temporal.ChronoUnit.MILLIS
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.datasource.url=jdbc:h2:mem:testdb"]
+    properties = ["spring.r2dbc.url=r2dbc:h2:mem:///testdb;USER=sa;PASSWORD=password"]
 )
 class ChatKotlinApplicationTests {
 
@@ -41,39 +43,43 @@ class ChatKotlinApplicationTests {
 
     @BeforeEach
     internal fun setUp() {
-        val secondBeforeNow = now.minusSeconds(1)
-        val twoSecondBeforeNow = now.minusSeconds(2)
-        val savedMessages = messageRepository.saveAll(
-            listOf(
-                Message(
-                    "*testMessage*",
-                    ContentType.PLAIN,
-                    twoSecondBeforeNow,
-                    "test",
-                    "http://test.com"
-                ),
-                Message(
-                    "**testMessage2**",
-                    ContentType.MARKDOWN,
-                    secondBeforeNow,
-                    "test1",
-                    "http://test.com"
-                ),
-                Message(
-                    "`testMessage3`",
-                    ContentType.MARKDOWN,
-                    now,
-                    "test2",
-                    "http://test.com"
+        runBlocking {
+            val secondBeforeNow = now.minusSeconds(1)
+            val twoSecondBeforeNow = now.minusSeconds(2)
+            val savedMessages = messageRepository.saveAll(
+                listOf(
+                    Message(
+                        "*testMessage*",
+                        ContentType.PLAIN,
+                        twoSecondBeforeNow,
+                        "test",
+                        "http://test.com"
+                    ),
+                    Message(
+                        "**testMessage2**",
+                        ContentType.MARKDOWN,
+                        secondBeforeNow,
+                        "test1",
+                        "http://test.com"
+                    ),
+                    Message(
+                        "`testMessage3`",
+                        ContentType.MARKDOWN,
+                        now,
+                        "test2",
+                        "http://test.com"
+                    )
                 )
             )
-        )
-        lastMessageId = savedMessages.first().id ?: ""
+            lastMessageId = savedMessages.first().id ?: ""
+        }
     }
 
     @AfterEach
     internal fun tearDown() {
-        messageRepository.deleteAll()
+        runBlocking {
+            messageRepository.deleteAll()
+        }
     }
 
     @ParameterizedTest
@@ -115,29 +121,31 @@ class ChatKotlinApplicationTests {
 
     @Test
     fun `test that messages posted to the API is stored`() {
-        client.postForEntity<Any>(
-            URI("/api/v1/messages"),
-            MessageVM(
-                "`HelloWorld`",
-                UserVM("test", URL("http://test.com")),
-                now.plusSeconds(1)
+        runBlocking {
+            client.postForEntity<Any>(
+                URI("/api/v1/messages"),
+                MessageVM(
+                    "`HelloWorld`",
+                    UserVM("test", URL("http://test.com")),
+                    now.plusSeconds(1)
+                )
             )
-        )
 
-        messageRepository.findAll()
-            .first { it.content.contains("HelloWorld") }
-            .apply {
-                assertThat(this.prepareForTesting())
-                    .isEqualTo(
-                        Message(
-                            "`HelloWorld`",
-                            ContentType.MARKDOWN,
-                            now.plusSeconds(1).truncatedTo(MILLIS),
-                            "test",
-                            "http://test.com"
+            messageRepository.findAll()
+                .first { it.content.contains("HelloWorld") }
+                .apply {
+                    assertThat(this.prepareForTesting())
+                        .isEqualTo(
+                            Message(
+                                "`HelloWorld`",
+                                ContentType.MARKDOWN,
+                                now.plusSeconds(1).truncatedTo(MILLIS),
+                                "test",
+                                "http://test.com"
+                            )
                         )
-                    )
-            }
+                }
+        }
     }
 
 }
